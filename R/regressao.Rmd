@@ -1,0 +1,123 @@
+---
+title: "Regressão das músicas de Rock do Spotify"
+author: "Daniele Silva"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(here)
+library(ggbeeswarm)
+library(corrplot)
+theme_set(theme_bw())
+```
+
+```{r read, echo=FALSE, message=FALSE, warning=FALSE}
+dados = read_csv(
+  here::here("data/spotify_songs.csv"),
+  col_types = cols(
+    .default = col_double(),
+    track_id = col_character(),
+    track_name = col_character(),
+    track_artist = col_character(),
+    track_album_id = col_character(),
+    track_album_name = col_character(),
+    track_album_release_date = col_character(),
+    playlist_name = col_character(),
+    playlist_id = col_character(),
+    playlist_genre = col_character(),
+    playlist_subgenre = col_character()
+  )
+)
+
+dados <- dados %>% filter(playlist_genre == 'rock')
+
+```
+
+## Descrição dos dados
+
+Os dados utilizados neste notebook foram gerados a partir da API do [Spotify](https://www.spotify.com), em janeiro de 2020, e disponibilizados no [TidyTuesday](https://www.tidytuesday.com/15). Foram usados recursos de áudio para explorar e classificar 32 mil músicas coletadas para cada um dos 6 principais gêneros (EDM, Latino, Pop, R&B, Rap, Rock).
+
+As variáveis presentes nesse dataset que serão trabalhadas aqui são:
+
+* *valence*: positividade da música (0 a 1)
+* *danceability*: o quão adequada uma música é para dançar (0 a 1)
+* *energy*: perceptual de intensidade e atividade (0 a 1). Normalmente, as faixas energéticas parecem rápidas, altas e barulhentas.
+* *acousticness*: medida de confiança de 0 a 1 para saber se a faixa é acústica
+* *instrumentalness*:  quanto mais próximo de 1, maior será a probabilidade da faixa não conter conteúdo vocal (0 a 1). 
+
+A partir desses dados, queremos construir um modelo que explique a valência de cerca de 5 mil faixas do gênero *Rock* com base nos aspectos de áudio, para descobrir o quanto _danceability_, _energy_, _acousticness_ e _instrumentalness_ influenciam na positividade da música.
+
+
+## Exploração dos dados
+
+Os dados de valência, mostrados no gráfico a seguir, geram um formato simétrico. A mediana ficou em 0,53 e 75% das músicas obtiveram _valence_ abaixo de 0,72.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dados %>%
+  ggplot(aes(x = valence)) + geom_histogram(fill = "cadetblue3", color = "white")
+
+```
+
+A distribuição da variável _danceability_, como ilustrado na figura abaixo, é simétrica em torno da mediana (0,52) e somente 10% das faixas tem uma capacidade acima de 0,7 para dançar.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dados %>% 
+  ggplot(aes(x = danceability)) + geom_histogram(fill = "coral2", color = "white")
+
+```
+
+A distribuição de _energy_ segue um formato diferente, com uma cauda longa à esquerda. A mediana aqui é 0,78 e 25% das músicas estão acima de 0,9.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dados %>% 
+  ggplot(aes(x = energy)) + geom_histogram(fill = "blueviolet", color = "white")
+
+```
+
+O gráfico abaixo mostra a distribuição de _acousticness_. Esse é um atributo pouco comum nas faixas avaliadas, pois a mediana foi de 0,04.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dados %>% 
+  ggplot(aes(x = acousticness)) + geom_histogram(fill = "darkorange", color = "white")
+
+```
+
+Também há bastante músicas com baixa probabilidade de ter conteúdo vocal, como podemos ver no gráfico a seguir. A média foi de 0,06 e 80% das faixas possuem até 0,03 de chance de não conter vozes.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dados %>%
+  ggplot(aes(x = instrumentalness)) + geom_histogram(fill = "darkolivegreen2", color = "white")
+
+```
+
+## O modelo
+
+A regressão múltipla foi utilizada para analisar a associação da variável de resposta _valence_ (o quão positiva uma música é) e as variáveis _danceability_ (o quão adequada uma música é para dançar), _energy_ (perceptual de intensidade e atividade na música), _acousticness_ (define o quanto a música é acústica) e _instrumentalness_ (o quanto a música não contém vozes). Um modelo no formato $valence = -0,13 + 0,87 \cdot danceability + 0,29 \cdot energy + 0,05 \cdot acousticness - 0,04 \cdot instrumentalness$ explica 30% da variável resposta (R² = 0,3024).
+
+```{r}
+model <- lm(valence ~ danceability + energy + acousticness + instrumentalness, data = dados)
+
+tidy(model, conf.int = TRUE)
+glance(model)
+```
+
+
+Em termos dos coeficientes, é plausível que o _danceability_ cause maior efeito sobre a valência, com um intervalo de confiança entre 0,84 e 0,91. Também é plausível que _energy_ tenha efeito relevante, porém menor que o _danceability_. Esse intervalo ficou entre 0,26 e 0,33. Por outro lado, é plausível que _acousticness_ e _instrumentalness_ causem um efeito relativamente baixo na valência, não chegando a ser nulo. A variavél _instrumentalness_ causa um efeito negativo (IC = [-0,07; -0,01]) enquanto _acousticness_ é positivo (IC = [0,03; 0,09]).
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+tidy(model, conf.int = TRUE) %>% 
+  filter(term != "(Intercept)") %>% 
+  ggplot(aes(x = term, y = estimate, ymin = conf.low, ymax = conf.high)) +
+  geom_point(color = "blue") +
+  geom_linerange() +
+  coord_flip() +
+  labs(y = "estimativa", x = "termo")
+```
+
+
